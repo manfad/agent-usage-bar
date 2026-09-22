@@ -79,8 +79,10 @@ struct AgentList: View {
 
     @State private var contentHeight: CGFloat = 0
 
+    private var scrolls: Bool { contentHeight > maxHeight }
+
     var body: some View {
-        ScrollView(.vertical, showsIndicators: contentHeight > maxHeight) {
+        ScrollView(.vertical, showsIndicators: scrolls) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(agents.enumerated()), id: \.element.id) { index, agent in
                     if index > 0 {
@@ -91,6 +93,8 @@ struct AgentList: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            // Leaves room for the overlay scroller so it never sits on top of the figures.
+            .padding(.trailing, scrolls ? 12 : 0)
             .background(
                 GeometryReader { geo in
                     Color.clear.preference(key: ContentHeightKey.self, value: geo.size.height)
