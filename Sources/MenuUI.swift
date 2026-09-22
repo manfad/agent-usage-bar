@@ -161,11 +161,14 @@ struct SessionComponent: View {
                 VStack(spacing: 3) {
                     SessionBar(fraction: session.remainingFraction)
                     // The caption sits centred under the bar, muted, like a hint. A credits row
-                    // spells out what was spent as well as the reset, so it gets a second line.
+                    // names the cap as well as the reset, so it gets a second line.
                     Text(session.captionText())
                         .font(.system(size: 10, weight: .regular, design: .rounded))
                         .foregroundStyle(.tertiary)
                         .lineLimit(2)
+                        // A hair of shrink keeps a short caption like "of $20 · Resets 18 Oct" on
+                        // one line instead of wrapping it for the sake of a few points.
+                        .minimumScaleFactor(0.9)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity)

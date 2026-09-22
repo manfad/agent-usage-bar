@@ -320,7 +320,7 @@ final class PluginTests: XCTestCase {
         XCTAssertEqual(credits.usedPercent, 24.8, accuracy: 0.0001)
         XCTAssertEqual(credits.resetText, "Resets Sep 30")
         XCTAssertEqual(credits.figureText(locale: enUS), "$37.60")
-        XCTAssertEqual(credits.captionText(locale: enUS), "used $12.40 of $50.00 · Resets Sep 30")
+        XCTAssertEqual(credits.captionText(locale: enUS), "of $50 · Resets Sep 30")
     }
 
     func testCreditsWithoutCapHasNoFractionAndDefaultsItsUnit() throws {
@@ -334,6 +334,70 @@ final class PluginTests: XCTestCase {
         XCTAssertEqual(session.usedPercent, 0)
         XCTAssertNil(session.remainingFraction)
         XCTAssertEqual(session.resetText, "")
+    }
+
+    func testRemainingWithACapBecomesTheSpendAgainstIt() throws {
+        let json = """
+        { "sessions": [{ "id": "credits", "name": "Balance", "kind": "credits",
+                         "remaining": 21.5, "cap": 100, "unit": "¥" }] }
+        """
+        let parsed = try parsePluginSessions(Data(json.utf8), now: at("2026-09-22T09:00:00+00:00"))
+        let session = try XCTUnwrap(parsed.sessions.first)
+        XCTAssertEqual(session.kind, .credits(used: 78.5, cap: 100, unit: "¥"))
+        XCTAssertEqual(session.usedPercent, 78.5, accuracy: 0.0001)
+        XCTAssertEqual(session.remainingFraction ?? 0, 0.215, accuracy: 0.0001)
+        XCTAssertEqual(session.figureText(locale: enUS), "¥21.50")
+        XCTAssertEqual(session.captionText(locale: enUS), "of ¥100")
+    }
+
+    func testRemainingWithNoCapBecomesABalance() throws {
+        let json = """
+        { "sessions": [{ "id": "credits", "name": "Balance", "kind": "credits",
+                         "remaining": "21.47", "unit": "¥" }] }
+        """
+        let parsed = try parsePluginSessions(Data(json.utf8), now: at("2026-09-22T09:00:00+00:00"))
+        let session = try XCTUnwrap(parsed.sessions.first)
+        XCTAssertEqual(session.kind, .balance(remaining: 21.47, unit: "¥"))
+        XCTAssertEqual(session.usedPercent, 0)
+        XCTAssertNil(session.remainingFraction)
+        XCTAssertEqual(session.figureText(locale: enUS), "¥21.47")
+        XCTAssertEqual(session.captionText(locale: enUS), "balance")
+    }
+
+    func testUsedWinsOverRemainingAndACreditsRowWithNeitherIsDropped() throws {
+        let json = """
+        {
+          "sessions": [
+            { "id": "spend", "kind": "credits", "used": 12.4, "remaining": 99, "cap": 50 },
+            { "id": "nothing", "kind": "credits", "cap": 50, "unit": "$" }
+          ]
+        }
+        """
+        let parsed = try parsePluginSessions(Data(json.utf8), now: at("2026-09-22T09:00:00+00:00"))
+        XCTAssertEqual(parsed.sessions.map(\.id), ["spend"])
+        XCTAssertEqual(parsed.sessions[0].kind, .credits(used: 12.4, cap: 50, unit: "$"))
+    }
+
+    func testBalanceUnitDefaultsAndACapOfZeroIsIgnored() throws {
+        let json = """
+        { "sessions": [{ "id": "credits", "kind": "credits", "remaining": 8, "cap": 0 }] }
+        """
+        let parsed = try parsePluginSessions(Data(json.utf8), now: at("2026-09-22T09:00:00+00:00"))
+        let session = try XCTUnwrap(parsed.sessions.first)
+        XCTAssertEqual(session.kind, .balance(remaining: 8, unit: "$"))
+        XCTAssertEqual(session.figureText(locale: enUS), "$8")
+    }
+
+    func testABalanceAboveItsCapClampsTheSpendToZero() throws {
+        let json = """
+        { "sessions": [{ "id": "credits", "kind": "credits", "remaining": 120, "cap": 100,
+                         "unit": "¥" }] }
+        """
+        let parsed = try parsePluginSessions(Data(json.utf8), now: at("2026-09-22T09:00:00+00:00"))
+        let session = try XCTUnwrap(parsed.sessions.first)
+        XCTAssertEqual(session.kind, .credits(used: 0, cap: 100, unit: "¥"))
+        XCTAssertEqual(session.usedPercent, 0)
+        XCTAssertEqual(session.figureText(locale: enUS), "¥100")
     }
 
     func testPayloadErrorIsReportedAndBadRowsAreDropped() throws {
@@ -408,6 +472,64 @@ final class PluginTests: XCTestCase {
         XCTAssertEqual(parsed.sessions[0].resetText, "Resets Sep 26")
         XCTAssertEqual(parsed.sessions[1].kind, .credits(used: 12.4, cap: 50, unit: "$"))
         XCTAssertEqual(parsed.sessions[1].resetText, "Resets Sep 30")
+    }
+
+    func testModeBMappingReadsARemainingBalance() throws {
+        let response = try JSONSerialization.jsonObject(with: Data("""
+        { "data": { "available_balance": 21.47 }, "plan": { "topUp": 100 } }
+        """.utf8))
+        let balanceOnly = pluginNormalizedPayload(
+            from: response,
+            mappings: [
+                ProviderManifest.SessionMapping(
+                    id: "credits",
+                    name: "Balance",
+                    kind: "credits",
+                    remaining: "data.available_balance",
+                    unit: "¥"
+                )
+            ]
+        )
+        var parsed = try parsePluginSessions(
+            try JSONSerialization.data(withJSONObject: balanceOnly),
+            now: at("2026-09-22T09:00:00+00:00"),
+            locale: enUS
+        )
+        XCTAssertEqual(parsed.sessions.map(\.kind), [.balance(remaining: 21.47, unit: "¥")])
+        XCTAssertEqual(parsed.sessions.first?.figureText(locale: enUS), "¥21.47")
+
+        // The same balance, now with a cap mapped: it becomes a spend against that cap.
+        let againstACap = pluginNormalizedPayload(
+            from: response,
+            mappings: [
+                ProviderManifest.SessionMapping(
+                    id: "credits",
+                    name: "Balance",
+                    kind: "credits",
+                    remaining: "data.available_balance",
+                    cap: "plan.topUp",
+                    unit: "¥"
+                )
+            ]
+        )
+        parsed = try parsePluginSessions(
+            try JSONSerialization.data(withJSONObject: againstACap),
+            now: at("2026-09-22T09:00:00+00:00"),
+            locale: enUS
+        )
+        let session = try XCTUnwrap(parsed.sessions.first)
+        XCTAssertEqual(session.remainingFraction ?? 0, 0.2147, accuracy: 0.0001)
+        XCTAssertEqual(session.figureText(locale: enUS), "¥21.47")
+        XCTAssertEqual(session.captionText(locale: enUS), "of ¥100")
+
+        // A credits mapping with neither path drops the row, the same as a missing percentage.
+        let neither = pluginNormalizedPayload(
+            from: response,
+            mappings: [
+                ProviderManifest.SessionMapping(id: "credits", kind: "credits", cap: "plan.topUp")
+            ]
+        )
+        XCTAssertEqual((neither["sessions"] as? [Any])?.count, 0)
     }
 
     // MARK: - Discovery

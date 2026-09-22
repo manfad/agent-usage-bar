@@ -1,10 +1,12 @@
 import Foundation
 
 /// What a session row measures. A window is a percentage of an allowance that refills; credits
-/// are an amount already spent, with or without a cap to spend it against.
+/// are an amount already spent, with or without a cap to spend it against; a balance is a prepaid
+/// amount still there, with nothing to measure it against — API billing with no cap and no reset.
 enum SessionKind: Equatable, Sendable {
     case window
     case credits(used: Double, cap: Double?, unit: String)
+    case balance(remaining: Double, unit: String)
 }
 
 struct UsageSession: Identifiable, Equatable, Sendable {
@@ -27,6 +29,10 @@ extension UsageSession {
         case let .credits(used, cap, _):
             guard let cap, cap > 0 else { return nil }
             return min(max((cap - used) / cap, 0), 1)
+        case .balance:
+            // A prepaid balance has no allowance behind it, so the track stays empty and the
+            // figure carries the whole story.
+            return nil
         }
     }
 
@@ -40,24 +46,29 @@ extension UsageSession {
                 return formatAmount(used, unit: unit, locale: locale)
             }
             return formatAmount(max(cap - used, 0), unit: unit, locale: locale)
+        case let .balance(remaining, unit):
+            return formatAmount(remaining, unit: unit, locale: locale)
         }
     }
 
-    /// The muted line under the bar: the reset for a window, what was spent for credits.
+    /// The muted line under the bar: the reset for a window, the cap (or spend hint) for credits,
+    /// and for a balance just what the figure is, since nothing else is known about it.
     func captionText(locale: Locale = .current) -> String {
         switch kind {
         case .window:
             return resetText
-        case let .credits(used, cap, unit):
+        case let .credits(_, cap, unit):
             let spent: String
             if let cap, cap > 0 {
-                spent = "used \(formatAmount(used, unit: unit, locale: locale))"
-                    + " of \(formatAmount(cap, unit: unit, locale: locale))"
+                spent = "of \(formatAmount(cap, unit: unit, locale: locale))"
             } else {
                 spent = "used this period"
             }
             guard !resetText.isEmpty else { return spent }
             return "\(spent) · \(resetText)"
+        case .balance:
+            guard !resetText.isEmpty else { return "balance" }
+            return "balance · \(resetText)"
         }
     }
 }
@@ -117,17 +128,38 @@ func formatUsedPercent(_ usedPercent: Double) -> String {
     return "\(value)%"
 }
 
-/// Currency-ish units lead the number and keep two decimals; anything else trails it as a plain
-/// grouped count, so `$37.60` and `1,240 tokens` both read naturally.
-private let leadingUnits: Set<String> = ["$", "€", "£"]
+/// A currency symbol leads the number; an ISO code trails it. Either way the amount keeps two
+/// decimals, dropped when it is whole, so a top-up reads `$20` and a balance reads `¥21.47`.
+/// Anything else trails the number as a plain grouped count: `1,240 tokens`.
+private let leadingUnits: Set<String> = ["$", "€", "£", "¥", "₩", "₹"]
+
+/// ISO 4217 codes a provider may send in place of a symbol. A three-letter unit outside this list
+/// is a count of something, not money, so `1,240 GPU` must not become `1,240.00 GPU`.
+private let trailingCurrencyCodes: Set<String> = [
+    "AED", "ARS", "AUD", "BRL", "CAD", "CHF", "CLP", "CNH", "CNY", "COP", "CZK", "DKK", "EGP",
+    "EUR", "GBP", "HKD", "HUF", "IDR", "ILS", "INR", "JPY", "KRW", "MXN", "MYR", "NGN", "NOK",
+    "NZD", "PHP", "PLN", "RON", "RUB", "SAR", "SEK", "SGD", "THB", "TRY", "TWD", "UAH", "USD",
+    "VND", "ZAR"
+]
 
 func formatAmount(_ value: Double, unit: String, locale: Locale = .current) -> String {
     let symbol = unit.trimmingCharacters(in: .whitespacesAndNewlines)
     if leadingUnits.contains(symbol) {
-        return symbol + groupedNumber(value, fractionDigits: 2, locale: locale)
+        return symbol + currencyNumber(value, locale: locale)
+    }
+    if trailingCurrencyCodes.contains(symbol.uppercased()) {
+        return "\(currencyNumber(value, locale: locale)) \(symbol)"
     }
     let number = groupedNumber(value.rounded(), fractionDigits: 0, locale: locale)
     return symbol.isEmpty ? number : "\(number) \(symbol)"
+}
+
+/// Two decimals, or none when the amount rounds to something whole: a `$20` cap should not be
+/// padded out to `$20.00`, and `¥21.47` must keep its cents.
+private func currencyNumber(_ value: Double, locale: Locale) -> String {
+    let rounded = (value * 100).rounded() / 100
+    let digits = rounded == rounded.rounded() ? 0 : 2
+    return groupedNumber(rounded, fractionDigits: digits, locale: locale)
 }
 
 private func groupedNumber(_ value: Double, fractionDigits: Int, locale: Locale) -> String {

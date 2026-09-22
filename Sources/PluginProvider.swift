@@ -64,6 +64,8 @@ struct ProviderManifest: Codable, Equatable, Sendable {
         /// For APIs that report what is left rather than what is used (Grok does).
         var remainingPercent: String?
         var used: String?
+        /// For prepaid billing that reports what is left rather than what was spent.
+        var remaining: String?
         var cap: String?
         var unit: String?
         var resetsAt: String?
@@ -172,20 +174,34 @@ func parsePluginSessions(
         } ?? ""
         let kind = (raw["kind"] as? String)?.pluginTrimmed.lowercased() ?? "window"
         if kind == "credits" {
-            guard let used = jsonDouble(raw["used"]), used.isFinite else { continue }
             var cap = jsonDouble(raw["cap"])
             if let value = cap, !value.isFinite || value <= 0 { cap = nil }
-            let unit = (raw["unit"] as? String)?.pluginTrimmed
+            let rawUnit = (raw["unit"] as? String)?.pluginTrimmed
+            let unit = rawUnit?.isEmpty == false ? rawUnit! : defaultCreditsUnit
+            // Spend and balance are the two ways an API reports money. `used` is what was spent;
+            // `remaining` is what is left, which only becomes a spend once a cap says of what.
+            let used: Double
+            let resolvedKind: SessionKind
+            if let spent = jsonDouble(raw["used"]), spent.isFinite {
+                used = spent
+                resolvedKind = .credits(used: spent, cap: cap, unit: unit)
+            } else if let remaining = jsonDouble(raw["remaining"]), remaining.isFinite {
+                if let cap {
+                    used = max(cap - remaining, 0)
+                    resolvedKind = .credits(used: used, cap: cap, unit: unit)
+                } else {
+                    used = 0
+                    resolvedKind = .balance(remaining: remaining, unit: unit)
+                }
+            } else {
+                continue
+            }
             append(UsageSession(
                 id: id,
                 name: name?.isEmpty == false ? name! : id,
                 resetText: resetText,
                 usedPercent: cap.map { min(max(used / $0 * 100, 0), 100) } ?? 0,
-                kind: .credits(
-                    used: used,
-                    cap: cap,
-                    unit: unit?.isEmpty == false ? unit! : defaultCreditsUnit
-                )
+                kind: resolvedKind
             ))
         } else {
             guard let percent = pluginUsedPercent(raw) else { continue }
@@ -215,9 +231,14 @@ func pluginNormalizedPayload(
             session["name"] = name
         }
         if kind == "credits" {
-            guard let path = mapping.used,
-                  let used = jsonDouble(jsonPathValue(root, path: path)) else { continue }
-            session["used"] = used
+            if let path = mapping.used, let used = jsonDouble(jsonPathValue(root, path: path)) {
+                session["used"] = used
+            } else if let path = mapping.remaining,
+                      let remaining = jsonDouble(jsonPathValue(root, path: path)) {
+                session["remaining"] = remaining
+            } else {
+                continue
+            }
             if let path = mapping.cap, let cap = jsonDouble(jsonPathValue(root, path: path)) {
                 session["cap"] = cap
             }

@@ -121,10 +121,34 @@ final class UsageTests: XCTestCase {
     func testFormatsCurrencyAmountsWithTheSymbolInFront() {
         XCTAssertEqual(formatAmount(37.6, unit: "$", locale: enUS), "$37.60")
         XCTAssertEqual(formatAmount(12.4, unit: "$", locale: enUS), "$12.40")
-        XCTAssertEqual(formatAmount(0, unit: "$", locale: enUS), "$0.00")
         XCTAssertEqual(formatAmount(1234.5, unit: "$", locale: enUS), "$1,234.50")
-        XCTAssertEqual(formatAmount(9.999, unit: "€", locale: enUS), "€10.00")
-        XCTAssertEqual(formatAmount(5, unit: "£", locale: enUS), "£5.00")
+        XCTAssertEqual(formatAmount(21.47, unit: "¥", locale: enUS), "¥21.47")
+        XCTAssertEqual(formatAmount(1500, unit: "₩", locale: enUS), "₩1,500")
+        XCTAssertEqual(formatAmount(99.5, unit: "₹", locale: enUS), "₹99.50")
+    }
+
+    func testWholeCurrencyAmountsDropTheDecimals() {
+        XCTAssertEqual(formatAmount(20, unit: "$", locale: enUS), "$20")
+        XCTAssertEqual(formatAmount(0, unit: "$", locale: enUS), "$0")
+        XCTAssertEqual(formatAmount(5, unit: "£", locale: enUS), "£5")
+        XCTAssertEqual(formatAmount(1000, unit: "$", locale: enUS), "$1,000")
+        XCTAssertEqual(
+            formatAmount(9.999, unit: "€", locale: enUS),
+            "€10",
+            "an amount that rounds to something whole is whole"
+        )
+    }
+
+    func testFormatsISOCurrencyCodesAfterTheNumber() {
+        XCTAssertEqual(formatAmount(21.47, unit: "CNY", locale: enUS), "21.47 CNY")
+        XCTAssertEqual(formatAmount(12.4, unit: "USD", locale: enUS), "12.40 USD")
+        XCTAssertEqual(formatAmount(20, unit: "USD", locale: enUS), "20 USD")
+        XCTAssertEqual(formatAmount(1234.5, unit: "EUR", locale: enUS), "1,234.50 EUR")
+        XCTAssertEqual(
+            formatAmount(1240, unit: "GPU", locale: enUS),
+            "1,240 GPU",
+            "a three-letter unit that is not a currency stays a count"
+        )
     }
 
     func testFormatsOtherUnitsAsGroupedIntegersAfterTheNumber() {
@@ -153,7 +177,7 @@ final class UsageTests: XCTestCase {
         )
         XCTAssertEqual(session.remainingFraction ?? 0, 0.752, accuracy: 0.0001)
         XCTAssertEqual(session.figureText(locale: enUS), "$37.60")
-        XCTAssertEqual(session.captionText(locale: enUS), "used $12.40 of $50.00 · Resets Oct 1")
+        XCTAssertEqual(session.captionText(locale: enUS), "of $50 · Resets Oct 1")
     }
 
     func testUncappedCreditsSessionReadsAsSpendWithNoBar() {
@@ -190,8 +214,34 @@ final class UsageTests: XCTestCase {
             kind: .credits(used: 60, cap: 50, unit: "$")
         )
         XCTAssertEqual(session.remainingFraction, 0)
-        XCTAssertEqual(session.figureText(locale: enUS), "$0.00")
-        XCTAssertEqual(session.captionText(locale: enUS), "used $60.00 of $50.00")
+        XCTAssertEqual(session.figureText(locale: enUS), "$0")
+        XCTAssertEqual(session.captionText(locale: enUS), "of $50")
+    }
+
+    func testBalanceSessionReadsAsThePrepaidAmountWithNoBar() {
+        let session = UsageSession(
+            id: "credits",
+            name: "Balance",
+            resetText: "",
+            usedPercent: 0,
+            kind: .balance(remaining: 21.47, unit: "¥")
+        )
+        XCTAssertNil(session.remainingFraction, "a balance has no allowance to draw against")
+        XCTAssertEqual(session.figureText(locale: enUS), "¥21.47")
+        XCTAssertEqual(session.captionText(locale: enUS), "balance")
+        XCTAssertEqual(session.usedPercent, 0, "a balance contributes nothing to the peak label")
+    }
+
+    func testBalanceSessionNamesItsResetWhenThereIsOne() {
+        let session = UsageSession(
+            id: "credits",
+            name: "Balance",
+            resetText: "Resets Oct 1",
+            usedPercent: 0,
+            kind: .balance(remaining: 40, unit: "CNY")
+        )
+        XCTAssertEqual(session.figureText(locale: enUS), "40 CNY")
+        XCTAssertEqual(session.captionText(locale: enUS), "balance · Resets Oct 1")
     }
 
     func testSampleUsageShowsBothSessionKinds() throws {

@@ -203,7 +203,8 @@ Each entry maps one row. `id` is a literal string; everything else named below i
 | `kind` | both | no | `"window"` (default) or `"credits"`. |
 | `usedPercent` | window | one of these two | Path to the share **consumed**, 0–100. |
 | `remainingPercent` | window | one of these two | Path to the share **left**, 0–100, for APIs that report it that way. Inverted internally. If both are mapped, `usedPercent` wins. |
-| `used` | credits | **yes** | Path to the amount spent. |
+| `used` | credits | one of these two | Path to the amount **spent**. |
+| `remaining` | credits | one of these two | Path to the amount **left**, for prepaid billing that reports a balance. With `cap` it becomes the spend against it; without one the row is a balance. If both are mapped, `used` wins. |
 | `cap` | credits | no | Path to the allowance. |
 | `unit` | credits | no | **Literal**, not a path. Defaults to `"$"`. |
 | `resetsAt` | both | no | Path to an ISO 8601 string. |
@@ -239,6 +240,13 @@ specification.
       "cap": 50,
       "unit": "$",
       "resetsAt": "2026-10-01T00:00:00Z"
+    },
+    {
+      "id": "balance",
+      "name": "Balance",
+      "kind": "credits",
+      "remaining": 21.47,
+      "unit": "¥"
     }
   ],
   "error": "Sign-in expired"
@@ -251,6 +259,8 @@ specification.
 - `kind` defaults to `"window"`. An unrecognised kind is treated as a window.
 - A window row carries `usedPercent` or `remainingPercent`, as the two rows above show. Send the
   one your API already reports and let the app invert it; do not compute `100 - x` yourself.
+- A credits row carries `used` or `remaining`, the same way: send `used` when your API reports
+  spend, `remaining` when it reports a balance; add `cap` if there is an allowance.
 - Numbers may be JSON numbers or numeric strings: `26` and `"26"` are both read as 26. `NaN` and
   infinities are rejected.
 - `resetsAt` is optional ISO 8601, with or without fractional seconds. An unparseable value is
@@ -270,21 +280,30 @@ Both are clamped to 0–100, and `usedPercent` wins if you send both. Getting th
 inverts the bar and is the easiest mistake to make here, so check a known value before you ship:
 a nearly-unused allowance must show a nearly-full bar and a high figure.
 
-### `credits` — an amount already spent
+### `credits` — money, either spent or left
 
-Needs `used`. `cap` and `unit` are optional.
+Needs one of two figures: send `used` when your API reports spend, `remaining` when it reports a
+balance; add `cap` if there is an allowance. `used` wins if you send both, and a row with neither
+is dropped. `cap` and `unit` are optional.
 
-| | With `cap` | Without `cap` |
-| --- | --- | --- |
-| Bar | Drains: `(cap - used) / cap` | Empty track, no fill — there is nothing to measure against |
-| Figure | What is left: `cap - used` | What was spent: `used` |
-| Caption | `used $12.40 of $50.00` | `used this period` |
+| | `used` + `cap` | `used`, no cap | `remaining` + `cap` | `remaining`, no cap |
+| --- | --- | --- | --- | --- |
+| Bar | Drains: `(cap - used) / cap` | Empty track, no fill | Drains: `remaining / cap` | Empty track, no fill |
+| Figure | What is left: `cap - used` | What was spent: `used` | `remaining` | `remaining` |
+| Caption | `of $50` | `used this period` | `of $50` | `balance` |
 
-`unit` defaults to `"$"`. `$`, `€` and `£` lead the number with two decimals (`$37.60`). Any other
-unit trails it as a grouped integer (`1,240 tokens`). Grouping and the decimal separator follow
-the user's locale. A `cap` of zero or less is treated as absent.
+A `remaining` row with a `cap` is simply the same thing said the other way round: the app turns it
+into a spend of `cap - remaining` (never negative). Without a cap there is nothing to drain
+against, so the row shows the balance as a plain figure — the right shape for prepaid API billing
+that publishes no cap and no reset.
 
-A reset is appended to either caption: `used $12.40 of $50.00 · Resets Oct 1`.
+`unit` defaults to `"$"`. A currency symbol (`$`, `€`, `£`, `¥`, `₩`, `₹`) leads the number and a
+three-letter ISO code (`USD`, `CNY`) trails it, both with two decimals, dropped when the amount is
+whole: `$37.60`, `¥21.47`, `21.47 CNY`, `$20`. Any other unit trails the number as a grouped
+integer (`1,240 tokens`). Grouping and the decimal separator follow the user's locale. A `cap` of
+zero or less is treated as absent.
+
+A reset is appended to any of these captions: `of $50 · Resets Oct 1`, `balance · Resets Oct 1`.
 
 ### How resets are worded
 
@@ -382,7 +401,8 @@ script that prints good JSON and then exits non-zero still fails:
 
 Then check the app's own rules against the output: is every `id` unique, is your percentage on a
 0–100 scale and pointing the right way (`usedPercent` for consumed, `remainingPercent` for left),
-is `resetsAt` a real ISO 8601 instant with an offset, and does every credits row have `used`?
+is `resetsAt` a real ISO 8601 instant with an offset, and does every credits row have `used` or
+`remaining`?
 
 **2. Prove discovery against a throwaway home**, so you are not editing the user's real config
 while you iterate:
@@ -419,7 +439,7 @@ legible against a dark menu too.
 - [ ] `provider.json` is valid JSON with a `name`, and exactly one of `fetch` or `request` + `sessions`.
 - [ ] Mode A prints the normalized JSON on stdout, exits 0, finishes inside 20 seconds, and reports trouble through `error` rather than stderr or a non-zero exit.
 - [ ] Window rows carry `usedPercent` (share consumed) or `remainingPercent` (share left), on a 0–100 scale, not 0–1, and the direction is verified against a known value.
-- [ ] Every credits row has `used`; `cap` is included when the API publishes one, and `unit` is set when it is not dollars.
+- [ ] Every credits row has `used` (spend) or `remaining` (a balance); `cap` is included when the API publishes one, and `unit` is set when it is not dollars.
 - [ ] Every `id` is unique and stable across refreshes.
 - [ ] `resetsAt` is a real ISO 8601 instant with a timezone, not a duration and not pre-formatted text.
 - [ ] No secret is printed, logged or written back; tokens are read from a file, an environment variable or a `command`.
