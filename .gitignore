@@ -2,6 +2,8 @@
 .build/
 /agent-usage
 /Agent Usage.app/
+/build/
+/dist/
 *.dSYM/
 
 # Local overrides (Makefile includes this)
