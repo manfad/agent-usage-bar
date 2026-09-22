@@ -177,7 +177,7 @@ final class UsageTests: XCTestCase {
         )
         XCTAssertEqual(session.remainingFraction ?? 0, 0.752, accuracy: 0.0001)
         XCTAssertEqual(session.figureText(locale: enUS), "$37.60")
-        XCTAssertEqual(session.captionText(locale: enUS), "of $50 · Resets Oct 1")
+        XCTAssertEqual(session.captionText(locale: enUS), "Resets Oct 1")
     }
 
     func testUncappedCreditsSessionReadsAsSpendWithNoBar() {
@@ -190,10 +190,10 @@ final class UsageTests: XCTestCase {
         )
         XCTAssertNil(session.remainingFraction, "no cap means there is no fraction to draw")
         XCTAssertEqual(session.figureText(locale: enUS), "$12.40")
-        XCTAssertEqual(session.captionText(locale: enUS), "used this period")
+        XCTAssertEqual(session.captionText(locale: enUS), "", "no reset, so nothing under the bar")
     }
 
-    func testUncappedCreditsSessionStillNamesItsReset() {
+    func testUncappedCreditsSessionNamesItsResetAndNothingElse() {
         let session = UsageSession(
             id: "spend",
             name: "Spend",
@@ -202,7 +202,7 @@ final class UsageTests: XCTestCase {
             kind: .credits(used: 1240, cap: nil, unit: "tokens")
         )
         XCTAssertEqual(session.figureText(locale: enUS), "1,240 tokens")
-        XCTAssertEqual(session.captionText(locale: enUS), "used this period · Resets Oct 1")
+        XCTAssertEqual(session.captionText(locale: enUS), "Resets Oct 1")
     }
 
     func testOverspentCreditsSessionClampsToAnEmptyBar() {
@@ -215,7 +215,7 @@ final class UsageTests: XCTestCase {
         )
         XCTAssertEqual(session.remainingFraction, 0)
         XCTAssertEqual(session.figureText(locale: enUS), "$0")
-        XCTAssertEqual(session.captionText(locale: enUS), "of $50")
+        XCTAssertEqual(session.captionText(locale: enUS), "", "the cap is not repeated under the bar")
     }
 
     func testBalanceSessionReadsAsThePrepaidAmountWithNoBar() {
@@ -228,11 +228,11 @@ final class UsageTests: XCTestCase {
         )
         XCTAssertNil(session.remainingFraction, "a balance has no allowance to draw against")
         XCTAssertEqual(session.figureText(locale: enUS), "¥21.47")
-        XCTAssertEqual(session.captionText(locale: enUS), "balance")
+        XCTAssertEqual(session.captionText(locale: enUS), "", "a balance row is one bare line")
         XCTAssertEqual(session.usedPercent, 0, "a balance contributes nothing to the peak label")
     }
 
-    func testBalanceSessionNamesItsResetWhenThereIsOne() {
+    func testBalanceSessionHasNoCaptionEvenWithAReset() {
         let session = UsageSession(
             id: "credits",
             name: "Balance",
@@ -241,7 +241,11 @@ final class UsageTests: XCTestCase {
             kind: .balance(remaining: 40, unit: "CNY")
         )
         XCTAssertEqual(session.figureText(locale: enUS), "40 CNY")
-        XCTAssertEqual(session.captionText(locale: enUS), "balance · Resets Oct 1")
+        XCTAssertEqual(
+            session.captionText(locale: enUS),
+            "",
+            "not even a reset is drawn under a balance"
+        )
     }
 
     func testSampleUsageShowsBothSessionKinds() throws {

@@ -51,24 +51,15 @@ extension UsageSession {
         }
     }
 
-    /// The muted line under the bar: the reset for a window, the cap (or spend hint) for credits,
-    /// and for a balance just what the figure is, since nothing else is known about it.
+    /// The muted line under the bar: the reset, and nothing else. The figure beside the bar already
+    /// says how much is left, so naming the cap underneath only repeated arithmetic. Empty when
+    /// there is no reset to name, and always empty for a balance, which is drawn as a bare line.
     func captionText(locale: Locale = .current) -> String {
         switch kind {
-        case .window:
+        case .window, .credits:
             return resetText
-        case let .credits(_, cap, unit):
-            let spent: String
-            if let cap, cap > 0 {
-                spent = "of \(formatAmount(cap, unit: unit, locale: locale))"
-            } else {
-                spent = "used this period"
-            }
-            guard !resetText.isEmpty else { return spent }
-            return "\(spent) · \(resetText)"
         case .balance:
-            guard !resetText.isEmpty else { return "balance" }
-            return "balance · \(resetText)"
+            return ""
         }
     }
 }

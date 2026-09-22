@@ -30,8 +30,8 @@ in both modes and in the normalized JSON.
 
 A credits row works the same way round: send `used` when your API reports spend, `remaining` when
 it reports a balance; add `cap` if there is an allowance. A balance with no cap has nothing to
-drain, so it drops the bar and shows one line — `Balance` and the amount — which is what prepaid
-API billing looks like.
+drain, so it drops the bar and shows one bare line — `Balance` and the amount — which is what
+prepaid API billing looks like.
 
 ```json
 {

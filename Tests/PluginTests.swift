@@ -320,7 +320,7 @@ final class PluginTests: XCTestCase {
         XCTAssertEqual(credits.usedPercent, 24.8, accuracy: 0.0001)
         XCTAssertEqual(credits.resetText, "Resets Sep 30")
         XCTAssertEqual(credits.figureText(locale: enUS), "$37.60")
-        XCTAssertEqual(credits.captionText(locale: enUS), "of $50 · Resets Sep 30")
+        XCTAssertEqual(credits.captionText(locale: enUS), "Resets Sep 30")
     }
 
     func testCreditsWithoutCapHasNoFractionAndDefaultsItsUnit() throws {
@@ -347,7 +347,7 @@ final class PluginTests: XCTestCase {
         XCTAssertEqual(session.usedPercent, 78.5, accuracy: 0.0001)
         XCTAssertEqual(session.remainingFraction ?? 0, 0.215, accuracy: 0.0001)
         XCTAssertEqual(session.figureText(locale: enUS), "¥21.50")
-        XCTAssertEqual(session.captionText(locale: enUS), "of ¥100")
+        XCTAssertEqual(session.captionText(locale: enUS), "")
     }
 
     func testRemainingWithNoCapBecomesABalance() throws {
@@ -361,7 +361,7 @@ final class PluginTests: XCTestCase {
         XCTAssertEqual(session.usedPercent, 0)
         XCTAssertNil(session.remainingFraction)
         XCTAssertEqual(session.figureText(locale: enUS), "¥21.47")
-        XCTAssertEqual(session.captionText(locale: enUS), "balance")
+        XCTAssertEqual(session.captionText(locale: enUS), "")
     }
 
     func testUsedWinsOverRemainingAndACreditsRowWithNeitherIsDropped() throws {
@@ -520,7 +520,7 @@ final class PluginTests: XCTestCase {
         let session = try XCTUnwrap(parsed.sessions.first)
         XCTAssertEqual(session.remainingFraction ?? 0, 0.2147, accuracy: 0.0001)
         XCTAssertEqual(session.figureText(locale: enUS), "¥21.47")
-        XCTAssertEqual(session.captionText(locale: enUS), "of ¥100")
+        XCTAssertEqual(session.captionText(locale: enUS), "")
 
         // A credits mapping with neither path drops the row, the same as a missing percentage.
         let neither = pluginNormalizedPayload(

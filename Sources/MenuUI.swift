@@ -97,6 +97,9 @@ struct AgentList: View {
                 }
             )
         }
+        // `showsIndicators: false` alone does not take on every macOS, and an overlay scroller
+        // lands on top of the figures. Both say the same thing; between them it stays away.
+        .scrollIndicators(.hidden)
         .onPreferenceChange(ContentHeightKey.self) { contentHeight = $0 }
         .frame(height: min(max(contentHeight, 1), maxHeight))
     }
@@ -157,30 +160,19 @@ struct SessionComponent: View {
     }
 
     /// A prepaid balance has no allowance behind it, so a bar would be decoration around an empty
-    /// track. One line instead: what it is on the left, how much of it is there on the right. The
-    /// plugin's own row name is ignored, because "Balance" is the only thing this row can be.
+    /// track. One line and nothing else: what it is on the left, how much of it is there on the
+    /// right. The plugin's own row name is ignored, because "Balance" is all such a row can be.
     private var balanceRow: some View {
-        VStack(alignment: .trailing, spacing: 3) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Balance")
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-                Text(session.figureText())
-                    .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(.primary)
-                    .fixedSize()
-            }
-            // The word "balance" is already the label, so the caption carries the reset alone —
-            // and only when there is one.
-            if !session.resetText.isEmpty {
-                Text(session.resetText)
-                    .font(.system(size: 10, weight: .regular, design: .rounded))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.9)
-            }
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("Balance")
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(session.figureText())
+                .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(.primary)
+                .fixedSize()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -194,8 +186,8 @@ struct SessionComponent: View {
             HStack(alignment: .top, spacing: 6) {
                 VStack(spacing: 3) {
                     SessionBar(fraction: session.remainingFraction)
-                    // The caption sits centred under the bar, muted, like a hint. A credits row
-                    // names the cap as well as the reset, so it gets a second line.
+                    // The caption sits centred under the bar, muted, like a hint: the reset, or
+                    // nothing at all when the provider sent none.
                     Text(session.captionText())
                         .font(.system(size: 10, weight: .regular, design: .rounded))
                         .foregroundStyle(.tertiary)

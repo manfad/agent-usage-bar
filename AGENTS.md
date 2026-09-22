@@ -290,14 +290,14 @@ is dropped. `cap` and `unit` are optional.
 | --- | --- | --- | --- | --- |
 | Bar | Drains: `(cap - used) / cap` | Empty track, no fill | Drains: `remaining / cap` | **No bar at all** |
 | Figure | What is left: `cap - used` | What was spent: `used` | `remaining` | `remaining` |
-| Caption | `of $50` | `used this period` | `of $50` | The reset, if there is one |
+| Caption | The reset, if there is one | The reset, if there is one | The reset, if there is one | None, ever |
 
 A `remaining` row with a `cap` is simply the same thing said the other way round: the app turns it
 into a spend of `cap - remaining` (never negative), and the row looks like any other credits row.
 
 Without a cap there is nothing to drain against, so the row drops the bar entirely and draws one
-line — the word `Balance` on the left, the amount on the right, the reset beneath it if you sent
-one. That is the shape of prepaid API billing, which publishes a balance and nothing else. Your
+line — the word `Balance` on the left, the amount on the right, and nothing underneath, not even a
+reset. That is the shape of prepaid API billing, which publishes a balance and nothing else. Your
 `name` is not shown on such a row: the label is always `Balance`.
 
 ```
@@ -310,7 +310,9 @@ whole: `$37.60`, `¥21.47`, `21.47 CNY`, `$20`. Any other unit trails the number
 integer (`1,240 tokens`). Grouping and the decimal separator follow the user's locale. A `cap` of
 zero or less is treated as absent.
 
-A reset is appended to a credits caption: `of $50 · Resets Oct 1`.
+The caption under a bar is the reset and nothing else, for every kind of row: the figure beside
+the bar already says how much is left, so the cap is not repeated underneath. A row with no
+`resetsAt` simply has no caption.
 
 ### How resets are worded
 
