@@ -1,0 +1,4 @@
+{
+  "name": "OpenAI API",
+  "fetch": "./fetch.sh"
+}

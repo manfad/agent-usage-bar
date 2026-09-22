@@ -1,0 +1,11 @@
+# Build output
+.build/
+/agent-usage
+/Agent Usage.app/
+*.dSYM/
+
+# Local overrides (Makefile includes this)
+local.env
+
+# macOS
+.DS_Store

@@ -1,0 +1,27 @@
+{
+  "name": "Grok",
+  "request": {
+    "url": "https://cli-chat-proxy.grok.com/v1/billing?format=credits",
+    "method": "GET",
+    "headers": {
+      "Authorization": "Bearer {{token}}",
+      "Accept": "application/json",
+      "User-Agent": "xai-grok-cli/0.2.118",
+      "x-grok-client-version": "0.2.118",
+      "x-grok-client-mode": "cli"
+    }
+  },
+  "token": {
+    "file": "~/.grok/auth.json",
+    "path": "*.key"
+  },
+  "sessions": [
+    {
+      "id": "weekly",
+      "name": "Weekly limit",
+      "kind": "window",
+      "remainingPercent": "config.creditUsagePercent",
+      "resetsAt": "config.currentPeriod.end"
+    }
+  ]
+}
