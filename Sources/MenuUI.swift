@@ -148,6 +148,44 @@ struct SessionComponent: View {
     var session: UsageSession
 
     var body: some View {
+        switch session.kind {
+        case .balance:
+            balanceRow
+        case .window, .credits:
+            barRow
+        }
+    }
+
+    /// A prepaid balance has no allowance behind it, so a bar would be decoration around an empty
+    /// track. One line instead: what it is on the left, how much of it is there on the right. The
+    /// plugin's own row name is ignored, because "Balance" is the only thing this row can be.
+    private var balanceRow: some View {
+        VStack(alignment: .trailing, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Balance")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Text(session.figureText())
+                    .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(.primary)
+                    .fixedSize()
+            }
+            // The word "balance" is already the label, so the caption carries the reset alone —
+            // and only when there is one.
+            if !session.resetText.isEmpty {
+                Text(session.resetText)
+                    .font(.system(size: 10, weight: .regular, design: .rounded))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.9)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var barRow: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(session.name)
                 .font(.system(size: 13, weight: .medium, design: .rounded))

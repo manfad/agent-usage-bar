@@ -29,8 +29,9 @@ it. Both are 0–100, and a remaining figure is inverted internally, so the two 
 in both modes and in the normalized JSON.
 
 A credits row works the same way round: send `used` when your API reports spend, `remaining` when
-it reports a balance; add `cap` if there is an allowance. A balance with no cap shows as a plain
-figure with an empty track, which is what prepaid API billing looks like.
+it reports a balance; add `cap` if there is an allowance. A balance with no cap has nothing to
+drain, so it drops the bar and shows one line — `Balance` and the amount — which is what prepaid
+API billing looks like.
 
 ```json
 {

@@ -288,14 +288,21 @@ is dropped. `cap` and `unit` are optional.
 
 | | `used` + `cap` | `used`, no cap | `remaining` + `cap` | `remaining`, no cap |
 | --- | --- | --- | --- | --- |
-| Bar | Drains: `(cap - used) / cap` | Empty track, no fill | Drains: `remaining / cap` | Empty track, no fill |
+| Bar | Drains: `(cap - used) / cap` | Empty track, no fill | Drains: `remaining / cap` | **No bar at all** |
 | Figure | What is left: `cap - used` | What was spent: `used` | `remaining` | `remaining` |
-| Caption | `of $50` | `used this period` | `of $50` | `balance` |
+| Caption | `of $50` | `used this period` | `of $50` | The reset, if there is one |
 
 A `remaining` row with a `cap` is simply the same thing said the other way round: the app turns it
-into a spend of `cap - remaining` (never negative). Without a cap there is nothing to drain
-against, so the row shows the balance as a plain figure — the right shape for prepaid API billing
-that publishes no cap and no reset.
+into a spend of `cap - remaining` (never negative), and the row looks like any other credits row.
+
+Without a cap there is nothing to drain against, so the row drops the bar entirely and draws one
+line — the word `Balance` on the left, the amount on the right, the reset beneath it if you sent
+one. That is the shape of prepaid API billing, which publishes a balance and nothing else. Your
+`name` is not shown on such a row: the label is always `Balance`.
+
+```
+Kimi      Balance                ¥21.47
+```
 
 `unit` defaults to `"$"`. A currency symbol (`$`, `€`, `£`, `¥`, `₩`, `₹`) leads the number and a
 three-letter ISO code (`USD`, `CNY`) trails it, both with two decimals, dropped when the amount is
@@ -303,7 +310,7 @@ whole: `$37.60`, `¥21.47`, `21.47 CNY`, `$20`. Any other unit trails the number
 integer (`1,240 tokens`). Grouping and the decimal separator follow the user's locale. A `cap` of
 zero or less is treated as absent.
 
-A reset is appended to any of these captions: `of $50 · Resets Oct 1`, `balance · Resets Oct 1`.
+A reset is appended to a credits caption: `of $50 · Resets Oct 1`.
 
 ### How resets are worded
 
