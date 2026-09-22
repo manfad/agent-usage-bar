@@ -1,7 +1,7 @@
 # Build output
 .build/
 /agent-usage
-/Agent Usage.app/
+/AUB.app/
 /build/
 /dist/
 *.dSYM/

@@ -109,7 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func installMainMenu() {
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "Quit Agent Usage", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit AUB", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let root = NSMenu()
         let item = NSMenuItem()
         item.submenu = appMenu
@@ -181,7 +181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let host = NSHostingController(rootView: SettingsView())
             let window = NSWindow(contentViewController: host)
             window.styleMask = [.titled, .closable]
-            window.title = "Agent Usage Settings"
+            window.title = "AUB Settings"
             window.isReleasedWhenClosed = false
             // SettingsView declares minWidth 380 / minHeight 400, so honour that.
             window.setContentSize(NSSize(width: 380, height: 420))
@@ -225,7 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         host.sizingOptions = [.preferredContentSize]
         let window = NSWindow(contentViewController: host)
         window.styleMask = [.titled, .closable, .miniaturizable]
-        window.title = "Agent Usage"
+        window.title = "AUB"
         window.backgroundColor = .windowBackgroundColor
         window.isReleasedWhenClosed = false
         window.setContentSize(NSSize(width: 328, height: 380))

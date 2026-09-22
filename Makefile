@@ -12,7 +12,7 @@ LDFLAGS                  = -framework AppKit -framework SwiftUI
 
 SRCS       = $(wildcard Sources/*.swift)
 BIN        = agent-usage
-APP_NAME   = Agent Usage
+APP_NAME   = AUB
 APP_BUNDLE = $(APP_NAME).app
 ICON       = Resources/AppIcon.icns
 ICONSET    = build/AppIcon.iconset
@@ -60,9 +60,9 @@ install: app
 
 release: app
 	@mkdir -p dist
-	@rm -f "dist/AgentUsage-$(VERSION).zip"
-	@ditto -c -k --keepParent "$(APP_BUNDLE)" "dist/AgentUsage-$(VERSION).zip"
-	@echo "==> Wrote dist/AgentUsage-$(VERSION).zip"
+	@rm -f "dist/AUB-$(VERSION).zip"
+	@ditto -c -k --keepParent "$(APP_BUNDLE)" "dist/AUB-$(VERSION).zip"
+	@echo "==> Wrote dist/AUB-$(VERSION).zip"
 
 test:
 	swift test

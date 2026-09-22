@@ -71,10 +71,10 @@ enum AgentIcons {
     /// logo collapses into an unreadable silhouette once flattened to a template mask, so this
     /// is a stroked mark in the same spirit: wide head, two eyes, antenna, side ears.
     static var menuBar: NSImage {
-        if let image = image(named: "menu-bar", data: Data(robotMarkup.utf8), side: 18, label: "Agent Usage") {
+        if let image = image(named: "menu-bar", data: Data(robotMarkup.utf8), side: 18, label: "AUB") {
             return image
         }
-        let fallback = NSImage(systemSymbolName: "cpu", accessibilityDescription: "Agent Usage")
+        let fallback = NSImage(systemSymbolName: "cpu", accessibilityDescription: "AUB")
             ?? NSImage(size: NSSize(width: 18, height: 18))
         fallback.isTemplate = true
         return fallback

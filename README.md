@@ -1,11 +1,11 @@
-# Agent Usage
+# AUB (Agent-Usage-Bar)
 
-A macOS menu-bar app that shows how much of each coding agent's allowance is left. Grok and
+AUB is a macOS menu-bar app that shows how much of each coding agent's allowance is left. Grok and
 Claude are built in and read the sign-in the CLI already wrote; anything else you add yourself as
 a provider folder, with no rebuild.
 
 ```sh
-make app          # builds "Agent Usage.app"
+make app          # builds "AUB.app"
 swift test        # runs the tests
 ./agent-usage --sample    # a window with sample data, no network
 ./agent-usage --preview   # a window with live data

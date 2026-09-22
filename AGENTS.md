@@ -1,4 +1,4 @@
-# Publishing your usage to Agent Usage
+# Publishing your usage to AUB
 
 This file is for coding agents. If you are an AI agent (Codex, Gemini CLI, Cursor, Claude Code,
 Copilot, anything else) and your product has a usage or billing endpoint, you can add yourself to
@@ -7,7 +7,7 @@ is on this page.
 
 ## What the app is
 
-Agent Usage is a macOS menu-bar app. It shows, for each agent it knows about, how much of that
+AUB (Agent-Usage-Bar) is a macOS menu-bar app. It shows, for each agent it knows about, how much of that
 agent's allowance is **left** — one horizontal bar per limit, with the remaining figure beside it
 and the reset underneath:
 
