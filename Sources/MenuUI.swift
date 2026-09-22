@@ -49,7 +49,7 @@ struct MenuFooter: View {
             Spacer(minLength: 8)
 
             FooterButton(action: { NSApp.terminate(nil) }) {
-                Text("Close App")
+                Text("Quit AUB")
             }
         }
         .font(.system(size: 13, design: .rounded))
