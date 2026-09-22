@@ -116,8 +116,16 @@ private struct ContentHeightKey: PreferenceKey {
 struct AgentComponent: View {
     var agent: UsageAgent
 
+    /// A short right-hand side (a single balance line, or an unavailable reason) is centred on
+    /// the name-and-icon column; stacks of bars keep their top edge on the agent name.
+    private var alignment: VerticalAlignment {
+        let compact = agent.sessions.isEmpty
+            || agent.sessions.allSatisfy { if case .balance = $0.kind { return true } else { return false } }
+        return compact ? .center : .top
+    }
+
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: alignment, spacing: 14) {
             VStack(spacing: 7) {
                 Text(agent.name)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
