@@ -9,7 +9,7 @@ final class PluginTests: XCTestCase {
             { "id": "five_hour", "name": "5h limit", "usedPercent": 26 }
         ] }
         """
-        let parsed = try parsePluginSessions(Data(json.utf8), now: Date())
+        let parsed = try parsePluginSessions(Data(json.utf8))
         XCTAssertEqual(parsed.sessions.map(\.usedPercent), [84, 26])
     }
 
@@ -300,40 +300,35 @@ final class PluginTests: XCTestCase {
           ]
         }
         """
-        let parsed = try parsePluginSessions(
-            Data(json.utf8),
-            now: at("2026-09-22T09:00:00+00:00"),
-            timeZone: losAngeles,
-            locale: enUS
-        )
+        let parsed = try parsePluginSessions(Data(json.utf8))
         XCTAssertNil(parsed.error)
         XCTAssertEqual(parsed.sessions.count, 2)
+        let now = at("2026-09-22T09:00:00+00:00")
 
         let window = parsed.sessions[0]
         XCTAssertEqual(window.name, "5h limit")
         XCTAssertEqual(window.kind, .window)
         XCTAssertEqual(window.usedPercent, 26)
-        XCTAssertEqual(window.resetText, "Resets in 5h")
+        XCTAssertEqual(window.captionText(now: now, timeZone: losAngeles, locale: enUS), "Resets in 5h")
 
         let credits = parsed.sessions[1]
         XCTAssertEqual(credits.kind, .credits(used: 12.4, cap: 50, unit: "$"))
         XCTAssertEqual(credits.usedPercent, 24.8, accuracy: 0.0001)
-        XCTAssertEqual(credits.resetText, "Resets Sep 30")
         XCTAssertEqual(credits.figureText(locale: enUS), "$37.60")
-        XCTAssertEqual(credits.captionText(locale: enUS), "Resets Sep 30")
+        XCTAssertEqual(credits.captionText(now: now, timeZone: losAngeles, locale: enUS), "Resets Sep 30")
     }
 
     func testCreditsWithoutCapHasNoFractionAndDefaultsItsUnit() throws {
         let json = """
         { "sessions": [{ "id": "spend", "kind": "credits", "used": "12.4" }] }
         """
-        let parsed = try parsePluginSessions(Data(json.utf8), now: at("2026-09-22T09:00:00+00:00"))
+        let parsed = try parsePluginSessions(Data(json.utf8))
         let session = try XCTUnwrap(parsed.sessions.first)
         XCTAssertEqual(session.kind, .credits(used: 12.4, cap: nil, unit: "$"))
         XCTAssertEqual(session.name, "spend", "a session with no name falls back to its id")
         XCTAssertEqual(session.usedPercent, 0)
         XCTAssertNil(session.remainingFraction)
-        XCTAssertEqual(session.resetText, "")
+        XCTAssertNil(session.resetsAt)
     }
 
     func testRemainingWithACapBecomesTheSpendAgainstIt() throws {
@@ -341,7 +336,7 @@ final class PluginTests: XCTestCase {
         { "sessions": [{ "id": "credits", "name": "Balance", "kind": "credits",
                          "remaining": 21.5, "cap": 100, "unit": "¥" }] }
         """
-        let parsed = try parsePluginSessions(Data(json.utf8), now: at("2026-09-22T09:00:00+00:00"))
+        let parsed = try parsePluginSessions(Data(json.utf8))
         let session = try XCTUnwrap(parsed.sessions.first)
         XCTAssertEqual(session.kind, .credits(used: 78.5, cap: 100, unit: "¥"))
         XCTAssertEqual(session.usedPercent, 78.5, accuracy: 0.0001)
@@ -355,7 +350,7 @@ final class PluginTests: XCTestCase {
         { "sessions": [{ "id": "credits", "name": "Balance", "kind": "credits",
                          "remaining": "21.47", "unit": "¥" }] }
         """
-        let parsed = try parsePluginSessions(Data(json.utf8), now: at("2026-09-22T09:00:00+00:00"))
+        let parsed = try parsePluginSessions(Data(json.utf8))
         let session = try XCTUnwrap(parsed.sessions.first)
         XCTAssertEqual(session.kind, .balance(remaining: 21.47, unit: "¥"))
         XCTAssertEqual(session.usedPercent, 0)
@@ -373,7 +368,7 @@ final class PluginTests: XCTestCase {
           ]
         }
         """
-        let parsed = try parsePluginSessions(Data(json.utf8), now: at("2026-09-22T09:00:00+00:00"))
+        let parsed = try parsePluginSessions(Data(json.utf8))
         XCTAssertEqual(parsed.sessions.map(\.id), ["spend"])
         XCTAssertEqual(parsed.sessions[0].kind, .credits(used: 12.4, cap: 50, unit: "$"))
     }
@@ -382,7 +377,7 @@ final class PluginTests: XCTestCase {
         let json = """
         { "sessions": [{ "id": "credits", "kind": "credits", "remaining": 8, "cap": 0 }] }
         """
-        let parsed = try parsePluginSessions(Data(json.utf8), now: at("2026-09-22T09:00:00+00:00"))
+        let parsed = try parsePluginSessions(Data(json.utf8))
         let session = try XCTUnwrap(parsed.sessions.first)
         XCTAssertEqual(session.kind, .balance(remaining: 8, unit: "$"))
         XCTAssertEqual(session.figureText(locale: enUS), "$8")
@@ -393,7 +388,7 @@ final class PluginTests: XCTestCase {
         { "sessions": [{ "id": "credits", "kind": "credits", "remaining": 120, "cap": 100,
                          "unit": "¥" }] }
         """
-        let parsed = try parsePluginSessions(Data(json.utf8), now: at("2026-09-22T09:00:00+00:00"))
+        let parsed = try parsePluginSessions(Data(json.utf8))
         let session = try XCTUnwrap(parsed.sessions.first)
         XCTAssertEqual(session.kind, .credits(used: 0, cap: 100, unit: "¥"))
         XCTAssertEqual(session.usedPercent, 0)
@@ -412,7 +407,7 @@ final class PluginTests: XCTestCase {
           "error": "Sign-in expired"
         }
         """
-        let parsed = try parsePluginSessions(Data(json.utf8), now: at("2026-09-22T09:00:00+00:00"))
+        let parsed = try parsePluginSessions(Data(json.utf8))
         XCTAssertEqual(parsed.error, "Sign-in expired")
         // The row with no measurement and the one with no id go; the first usable `weekly` wins.
         XCTAssertEqual(parsed.sessions.map(\.id), ["weekly"])
@@ -461,17 +456,13 @@ final class PluginTests: XCTestCase {
         ]
         let payload = pluginNormalizedPayload(from: response, mappings: mappings)
         let data = try JSONSerialization.data(withJSONObject: payload)
-        let parsed = try parsePluginSessions(
-            data,
-            now: at("2026-09-22T09:00:00+00:00"),
-            timeZone: losAngeles,
-            locale: enUS
-        )
+        let parsed = try parsePluginSessions(data)
+        let now = at("2026-09-22T09:00:00+00:00")
         XCTAssertEqual(parsed.sessions.map(\.id), ["weekly", "credits"])
         XCTAssertEqual(parsed.sessions[0].usedPercent, 16.5)
-        XCTAssertEqual(parsed.sessions[0].resetText, "Resets Sep 26")
+        XCTAssertEqual(parsed.sessions[0].captionText(now: now, timeZone: losAngeles, locale: enUS), "Resets Sep 26")
         XCTAssertEqual(parsed.sessions[1].kind, .credits(used: 12.4, cap: 50, unit: "$"))
-        XCTAssertEqual(parsed.sessions[1].resetText, "Resets Sep 30")
+        XCTAssertEqual(parsed.sessions[1].captionText(now: now, timeZone: losAngeles, locale: enUS), "Resets Sep 30")
     }
 
     func testModeBMappingReadsARemainingBalance() throws {
@@ -490,11 +481,7 @@ final class PluginTests: XCTestCase {
                 )
             ]
         )
-        var parsed = try parsePluginSessions(
-            try JSONSerialization.data(withJSONObject: balanceOnly),
-            now: at("2026-09-22T09:00:00+00:00"),
-            locale: enUS
-        )
+        var parsed = try parsePluginSessions(try JSONSerialization.data(withJSONObject: balanceOnly))
         XCTAssertEqual(parsed.sessions.map(\.kind), [.balance(remaining: 21.47, unit: "¥")])
         XCTAssertEqual(parsed.sessions.first?.figureText(locale: enUS), "¥21.47")
 
@@ -512,11 +499,7 @@ final class PluginTests: XCTestCase {
                 )
             ]
         )
-        parsed = try parsePluginSessions(
-            try JSONSerialization.data(withJSONObject: againstACap),
-            now: at("2026-09-22T09:00:00+00:00"),
-            locale: enUS
-        )
+        parsed = try parsePluginSessions(try JSONSerialization.data(withJSONObject: againstACap))
         let session = try XCTUnwrap(parsed.sessions.first)
         XCTAssertEqual(session.remainingFraction ?? 0, 0.2147, accuracy: 0.0001)
         XCTAssertEqual(session.figureText(locale: enUS), "¥21.47")

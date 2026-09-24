@@ -3,6 +3,7 @@ import XCTest
 
 final class UsageTests: XCTestCase {
     private let losAngeles = TimeZone(identifier: "America/Los_Angeles")!
+    private let utc = TimeZone(secondsFromGMT: 0)!
     private let enUS = Locale(identifier: "en_US")
 
     private func at(_ iso: String) -> Date {
@@ -29,15 +30,14 @@ final class UsageTests: XCTestCase {
           }
         }
         """
-        let session = try parseBillingSession(
-            Data(json.utf8),
-            now: at("2026-09-22T09:00:00-07:00"),
-            timeZone: losAngeles,
-            locale: enUS
-        )
+        let session = try parseBillingSession(Data(json.utf8))
         XCTAssertEqual(session.name, "Weekly limit")
         XCTAssertEqual(session.usedPercent, 86.6, accuracy: 0.0001)  // API value is percent left
-        XCTAssertEqual(session.resetText, "Resets Sep 26")
+        XCTAssertEqual(session.resetsAt, at("2026-09-26T08:21:18.802818+00:00"))
+        XCTAssertEqual(
+            session.captionText(now: at("2026-09-22T09:00:00-07:00"), timeZone: losAngeles, locale: enUS),
+            "Resets Sep 26"
+        )
         XCTAssertEqual(session.id, "weekly")
     }
 
@@ -52,19 +52,17 @@ final class UsageTests: XCTestCase {
           }
         }
         """
-        let session = try parseBillingSession(
-            Data(json.utf8),
-            now: at("2026-09-22T09:00:00+00:00"),
-            timeZone: losAngeles,
-            locale: enUS
+        let session = try parseBillingSession(Data(json.utf8))
+        XCTAssertEqual(
+            session.captionText(now: at("2026-09-22T09:00:00+00:00"), timeZone: losAngeles, locale: enUS),
+            "Resets in 5h 10m"
         )
-        XCTAssertEqual(session.resetText, "Resets in 5h 10m")
     }
 
     func testResetDayIsNotZeroPadded() {
         XCTAssertEqual(
             ResetText.weekly(
-                isoEnd: "2026-10-06T08:21:18.802818+00:00",
+                until: at("2026-10-06T08:21:18.802818+00:00"),
                 now: at("2026-09-22T09:00:00-07:00"),
                 timeZone: losAngeles,
                 locale: enUS
@@ -85,30 +83,22 @@ final class UsageTests: XCTestCase {
     func testWeeklyUsesLocalCalendarDayForTheShortDate() {
         // 2026-09-27T02:00Z is still September 26 in Los Angeles.
         let now = at("2026-09-20T09:00:00+00:00")
+        let end = at("2026-09-27T02:00:00+00:00")
         XCTAssertEqual(
-            ResetText.weekly(isoEnd: "2026-09-27T02:00:00+00:00", now: now, timeZone: losAngeles, locale: enUS),
+            ResetText.weekly(until: end, now: now, timeZone: losAngeles, locale: enUS),
             "Resets Sep 26"
         )
         XCTAssertEqual(
-            ResetText.weekly(
-                isoEnd: "2026-09-27T02:00:00+00:00",
-                now: now,
-                timeZone: TimeZone(secondsFromGMT: 0)!,
-                locale: enUS
-            ),
+            ResetText.weekly(until: end, now: now, timeZone: utc, locale: enUS),
             "Resets Sep 27"
         )
     }
 
-    func testWeeklyRejectsUnparseableTimestamp() {
-        XCTAssertNil(
-            ResetText.weekly(
-                isoEnd: "not a date",
-                now: at("2026-09-22T09:00:00+00:00"),
-                timeZone: losAngeles,
-                locale: enUS
-            )
-        )
+    func testParseISO8601RejectsUnparseableTimestamps() {
+        // A malformed `resetsAt` is treated the same as a missing one: the session still shows,
+        // just with no caption underneath, rather than crashing or showing garbage.
+        XCTAssertNil(ResetText.parseISO8601("not a date"))
+        XCTAssertNil(ResetText.parseISO8601(""))
     }
 
     func testFormatsUsedPercentAsInteger() {
@@ -160,31 +150,58 @@ final class UsageTests: XCTestCase {
     }
 
     func testWindowSessionReadsAsRemainingPercent() {
-        let session = UsageSession(id: "5h", name: "5h limit", resetText: "Resets in 45m", usedPercent: 71)
+        let session = UsageSession(
+            id: "5h",
+            name: "5h limit",
+            resetsAt: at("2026-09-22T09:45:00+00:00"),
+            resetStyle: .fiveHour,
+            usedPercent: 71
+        )
         XCTAssertEqual(session.kind, .window)
         XCTAssertEqual(session.remainingFraction ?? 0, 0.29, accuracy: 0.0001)
         XCTAssertEqual(session.figureText(locale: enUS), "29%")
-        XCTAssertEqual(session.captionText(locale: enUS), "Resets in 45m")
+        XCTAssertEqual(
+            session.captionText(now: at("2026-09-22T09:00:00+00:00"), locale: enUS),
+            "Resets in 45m"
+        )
+    }
+
+    func testCaptionAdvancesAsNowAdvances() {
+        // The same session, unchanged, must read differently as time passes underneath it —
+        // this is the whole point of storing an instant instead of baked text.
+        let session = UsageSession(
+            id: "5h",
+            name: "5h limit",
+            resetsAt: at("2026-09-22T09:45:00+00:00"),
+            resetStyle: .fiveHour,
+            usedPercent: 71
+        )
+        XCTAssertEqual(session.captionText(now: at("2026-09-22T09:00:00+00:00")), "Resets in 45m")
+        XCTAssertEqual(session.captionText(now: at("2026-09-22T09:30:00+00:00")), "Resets in 15m")
+        XCTAssertEqual(session.captionText(now: at("2026-09-22T09:45:30+00:00")), "Resets soon")
     }
 
     func testCappedCreditsSessionReadsAsRemainingAmount() {
         let session = UsageSession(
             id: "credits",
             name: "API credits",
-            resetText: "Resets Oct 1",
+            resetsAt: at("2026-10-01T00:00:00+00:00"),
             usedPercent: 24.8,
             kind: .credits(used: 12.4, cap: 50, unit: "$")
         )
         XCTAssertEqual(session.remainingFraction ?? 0, 0.752, accuracy: 0.0001)
         XCTAssertEqual(session.figureText(locale: enUS), "$37.60")
-        XCTAssertEqual(session.captionText(locale: enUS), "Resets Oct 1")
+        XCTAssertEqual(
+            session.captionText(now: at("2026-09-22T09:00:00+00:00"), timeZone: utc, locale: enUS),
+            "Resets Oct 1"
+        )
     }
 
     func testUncappedCreditsSessionReadsAsSpendWithNoBar() {
         let session = UsageSession(
             id: "spend",
             name: "Spend today",
-            resetText: "",
+            resetsAt: nil,
             usedPercent: 0,
             kind: .credits(used: 12.4, cap: nil, unit: "$")
         )
@@ -197,19 +214,22 @@ final class UsageTests: XCTestCase {
         let session = UsageSession(
             id: "spend",
             name: "Spend",
-            resetText: "Resets Oct 1",
+            resetsAt: at("2026-10-01T00:00:00+00:00"),
             usedPercent: 0,
             kind: .credits(used: 1240, cap: nil, unit: "tokens")
         )
         XCTAssertEqual(session.figureText(locale: enUS), "1,240 tokens")
-        XCTAssertEqual(session.captionText(locale: enUS), "Resets Oct 1")
+        XCTAssertEqual(
+            session.captionText(now: at("2026-09-22T09:00:00+00:00"), timeZone: utc, locale: enUS),
+            "Resets Oct 1"
+        )
     }
 
     func testOverspentCreditsSessionClampsToAnEmptyBar() {
         let session = UsageSession(
             id: "credits",
             name: "API credits",
-            resetText: "",
+            resetsAt: nil,
             usedPercent: 100,
             kind: .credits(used: 60, cap: 50, unit: "$")
         )
@@ -222,7 +242,7 @@ final class UsageTests: XCTestCase {
         let session = UsageSession(
             id: "credits",
             name: "Balance",
-            resetText: "",
+            resetsAt: nil,
             usedPercent: 0,
             kind: .balance(remaining: 21.47, unit: "¥")
         )
@@ -236,7 +256,7 @@ final class UsageTests: XCTestCase {
         let session = UsageSession(
             id: "credits",
             name: "Balance",
-            resetText: "Resets Oct 1",
+            resetsAt: at("2026-10-01T00:00:00+00:00"),
             usedPercent: 0,
             kind: .balance(remaining: 40, unit: "CNY")
         )
@@ -262,7 +282,7 @@ final class UsageTests: XCTestCase {
             UsageSession(
                 id: "s\(index)",
                 name: "Session \(index)",
-                resetText: "Resets Sep 26",
+                resetsAt: nil,
                 usedPercent: Double(index)
             )
         }

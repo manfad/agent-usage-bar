@@ -195,17 +195,21 @@ struct SessionComponent: View {
                 VStack(spacing: 3) {
                     SessionBar(fraction: session.remainingFraction)
                     // The caption sits centred under the bar, muted, like a hint: the reset, or
-                    // nothing at all when the provider sent none.
-                    Text(session.captionText())
-                        .font(.system(size: 10, weight: .regular, design: .rounded))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(2)
-                        // A hair of shrink keeps a short caption like "of $20 · Resets 18 Oct" on
-                        // one line instead of wrapping it for the sake of a few points.
-                        .minimumScaleFactor(0.9)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity)
+                    // nothing at all when the provider sent none. Recomputed once a minute from
+                    // `context.date` rather than read off a stored string, so a countdown like
+                    // "Resets in 45m" keeps ticking down while the menu stays open.
+                    TimelineView(.everyMinute) { context in
+                        Text(session.captionText(now: context.date))
+                            .font(.system(size: 10, weight: .regular, design: .rounded))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(2)
+                            // A hair of shrink keeps a short caption like "of $20 · Resets 18 Oct" on
+                            // one line instead of wrapping it for the sake of a few points.
+                            .minimumScaleFactor(0.9)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity)
+                    }
                 }
                 Text(session.figureText())
                     .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())

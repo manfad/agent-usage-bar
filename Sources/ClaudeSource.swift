@@ -2,12 +2,10 @@ import Foundation
 
 /// Maps `GET /api/oauth/usage` onto the session rows the menu renders: the 5-hour window, the
 /// weekly window, and one row per model-scoped weekly limit.
-func parseClaudeUsageSessions(
-    _ data: Data,
-    now: Date = Date(),
-    timeZone: TimeZone = .current,
-    locale: Locale = .current
-) throws -> [UsageSession] {
+///
+/// Only the raw reset instant is pulled out here; how it reads as words is decided at render time
+/// by `UsageSession.captionText`, from `resetStyle` and the current time.
+func parseClaudeUsageSessions(_ data: Data) throws -> [UsageSession] {
     guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
         throw ClaudeLoadError.badPayload
     }
@@ -24,7 +22,8 @@ func parseClaudeUsageSessions(
         append(UsageSession(
             id: "five_hour",
             name: "5h limit",
-            resetText: fiveHourReset(window["resets_at"], now: now),
+            resetsAt: resetDate(window["resets_at"]),
+            resetStyle: .fiveHour,
             usedPercent: percent
         ))
     }
@@ -34,7 +33,7 @@ func parseClaudeUsageSessions(
         append(UsageSession(
             id: "seven_day",
             name: "Weekly limit",
-            resetText: weeklyReset(window["resets_at"], now: now, timeZone: timeZone, locale: locale),
+            resetsAt: resetDate(window["resets_at"]),
             usedPercent: percent
         ))
     }
@@ -51,7 +50,7 @@ func parseClaudeUsageSessions(
         append(UsageSession(
             id: modelSessionID(name),
             name: name,
-            resetText: weeklyReset(limit["resets_at"], now: now, timeZone: timeZone, locale: locale),
+            resetsAt: resetDate(limit["resets_at"]),
             usedPercent: percent
         ))
     }
@@ -65,7 +64,7 @@ func parseClaudeUsageSessions(
         append(UsageSession(
             id: modelSessionID(name),
             name: name,
-            resetText: weeklyReset(window["resets_at"], now: now, timeZone: timeZone, locale: locale),
+            resetsAt: resetDate(window["resets_at"]),
             usedPercent: percent
         ))
     }
@@ -85,20 +84,8 @@ private func isWeeklyScoped(_ limit: [String: Any]) -> Bool {
 }
 
 /// A window with no usable timestamp still shows its percentage, just with no reset line.
-private func weeklyReset(_ value: Any?, now: Date, timeZone: TimeZone, locale: Locale) -> String {
-    guard let iso = value as? String,
-          let text = ResetText.weekly(isoEnd: iso, now: now, timeZone: timeZone, locale: locale) else {
-        return ""
-    }
-    return text
-}
-
-private func fiveHourReset(_ value: Any?, now: Date) -> String {
-    guard let iso = value as? String,
-          let text = ResetText.fiveHour(isoEnd: iso, now: now) else {
-        return ""
-    }
-    return text
+private func resetDate(_ value: Any?) -> Date? {
+    (value as? String).flatMap(ResetText.parseISO8601)
 }
 
 final class ClaudeAgentSource: AgentSource, @unchecked Sendable {
