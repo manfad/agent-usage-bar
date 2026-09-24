@@ -22,9 +22,12 @@ Claude    5h limit
 ```
 
 Grok and Claude are compiled in. Everything else is a **provider folder** discovered at runtime.
-Providers are re-read on every refresh, which happens every 15 minutes, and when the user opens
-the menu if the last reading is more than 2 minutes old. A folder added while the app is running
-appears without a restart.
+Providers are re-read on every refresh. That happens every 5 minutes; when the user opens the
+menu if the last reading is more than a minute old, and every minute after that while it stays
+open; a few seconds after the Mac wakes; and when the network comes back. The providers directory
+is also watched, so adding, removing or editing a folder while the app is running refreshes within
+about a second, with no restart. Every provider is fetched at the same time, and each row appears
+as soon as its own fetch returns, so a slow provider holds up nobody but itself.
 
 ## Where to put your provider
 

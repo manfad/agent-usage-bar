@@ -8,7 +8,7 @@ MACOS_MIN                = 14.0
 MACOSX_DEPLOYMENT_TARGET = $(MACOS_MIN)
 SWIFT_TARGET             ?= $(shell uname -m)-apple-macosx$(MACOS_MIN)
 SDK                      := $(shell xcrun --show-sdk-path)
-LDFLAGS                  = -framework AppKit -framework SwiftUI
+LDFLAGS                  = -framework AppKit -framework SwiftUI -framework Network -framework CoreServices
 
 SRCS       = $(wildcard Sources/*.swift)
 BIN        = agent-usage

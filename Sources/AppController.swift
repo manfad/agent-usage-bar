@@ -19,7 +19,16 @@ final class UsageStore: ObservableObject {
     var onAgentsChange: (([UsageAgent]) -> Void)?
     private var lastSnapshotAt: Date?
     private var inFlight: Task<Void, Never>?
+    /// Set when a refresh is asked for while one is running. The running one may already be past
+    /// the change that prompted it (a provider folder dropped in mid-scan), so run one more.
+    private var refreshPending = false
+    /// Registry order for the refresh in flight. Rows are always published in this order,
+    /// whichever source happens to answer first.
+    private var refreshOrder: [String] = []
     private let networkEnabled: Bool
+
+    /// How old the last good reading may be before opening the menu fetches a new one.
+    static let staleAfter: TimeInterval = 60
 
     init(networkEnabled: Bool) {
         self.networkEnabled = networkEnabled
@@ -32,33 +41,72 @@ final class UsageStore: ObservableObject {
     }
 
     func refresh() {
-        guard networkEnabled, inFlight == nil else { return }
+        guard networkEnabled else { return }
+        guard inFlight == nil else {
+            refreshPending = true
+            return
+        }
         inFlight = Task { [weak self] in
             guard let self else { return }
-            var next: [UsageAgent] = []
             // Re-read the registry every refresh: a provider folder added since the last one is
             // picked up here, with no restart.
-            for source in AgentRegistry.sources() {
-                next.append(await source.load())
-            }
-            let loaded = next
-            await MainActor.run {
-                self.agents = loaded
-                if loaded.contains(where: { !$0.sessions.isEmpty }) {
-                    self.lastSnapshotAt = Date()
+            let sources = AgentRegistry.sources()
+            let order = sources.map(\.id)
+            await MainActor.run { self.begin(order: order) }
+            // All at once, each row landing as soon as its source answers: one slow provider no
+            // longer holds up the others, and a script that runs to its 20s limit costs 20s, not
+            // 20s plus everything queued behind it.
+            await withTaskGroup(of: UsageAgent.self) { group in
+                for source in sources {
+                    group.addTask { await source.load() }
                 }
-                self.onAgentsChange?(self.agents)
-                self.inFlight = nil
+                for await agent in group {
+                    await MainActor.run { self.publish(agent) }
+                }
             }
+            await MainActor.run { self.finish() }
         }
     }
 
     func refreshIfStale() {
-        guard networkEnabled else { return }
-        if let lastSnapshotAt, Date().timeIntervalSince(lastSnapshotAt) <= 120 {
+        // A refresh already running is as fresh as this gets; do not queue another behind it.
+        guard networkEnabled, inFlight == nil else { return }
+        if let lastSnapshotAt, Date().timeIntervalSince(lastSnapshotAt) < Self.staleAfter {
             return
         }
         refresh()
+    }
+
+    /// Drops agents that left the registry. Everyone else keeps their last row on screen until
+    /// the new one arrives, so a refresh never blanks the menu.
+    private func begin(order: [String]) {
+        refreshOrder = order
+        let kept = agents.filter { order.contains($0.id) }
+        if kept != agents {
+            agents = kept
+            onAgentsChange?(agents)
+        }
+    }
+
+    private func publish(_ agent: UsageAgent) {
+        var byID: [String: UsageAgent] = [:]
+        for existing in agents where byID[existing.id] == nil {
+            byID[existing.id] = existing
+        }
+        byID[agent.id] = agent
+        agents = refreshOrder.compactMap { byID[$0] }
+        onAgentsChange?(agents)
+    }
+
+    private func finish() {
+        if agents.contains(where: { !$0.sessions.isEmpty }) {
+            lastSnapshotAt = Date()
+        }
+        inFlight = nil
+        if refreshPending {
+            refreshPending = false
+            refresh()
+        }
     }
 }
 
@@ -73,12 +121,16 @@ struct RootView: View {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSWindowDelegate {
     let store: UsageStore
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var previewWindow: NSWindow?
     private var pollTimer: Timer?
+    /// Runs only while the popover or the preview window is on screen, so a menu left open keeps
+    /// its numbers moving instead of showing whatever it opened with.
+    private var visibleTimer: Timer?
+    private var triggers: RefreshTriggers?
     private var clickMonitor: Any?
     private var escapeMonitor: Any?
     private var activatedForPopover = false
@@ -100,10 +152,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .preview:
             store.refresh()
             startPolling()
+            startTriggers()
             openWindow()
+            startVisibleTimer()
         case .menu:
             store.refresh()
             startPolling()
+            startTriggers()
         }
     }
 
@@ -136,6 +191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let popover = NSPopover()
         popover.behavior = .transient
         popover.animates = true
+        popover.delegate = self
         let host = NSHostingController(rootView: rootView)
         host.sizingOptions = [.preferredContentSize]
         popover.contentViewController = host
@@ -145,11 +201,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startPolling() {
-        let timer = Timer(timeInterval: 15 * 60, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 5 * 60, repeats: true) { [weak self] _ in
             self?.store.refresh()
         }
         RunLoop.main.add(timer, forMode: .common)
         pollTimer = timer
+    }
+
+    /// Wake, network return and provider-folder edits. Never in sample mode, which must not
+    /// touch the network.
+    private func startTriggers() {
+        let triggers = RefreshTriggers { [weak self] in self?.store.refresh() }
+        triggers.start()
+        self.triggers = triggers
+    }
+
+    private func startVisibleTimer() {
+        guard LaunchMode.current != .sample, visibleTimer == nil else { return }
+        let timer = Timer(timeInterval: UsageStore.staleAfter, repeats: true) { [weak self] _ in
+            self?.store.refreshIfStale()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        visibleTimer = timer
+    }
+
+    private func stopVisibleTimer() {
+        visibleTimer?.invalidate()
+        visibleTimer = nil
+    }
+
+    // `.transient` can close the popover without going through `closePopover`, so the timer is
+    // stopped here rather than there.
+    func popoverDidClose(_ notification: Notification) {
+        stopVisibleTimer()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard (notification.object as? NSWindow) === previewWindow else { return }
+        stopVisibleTimer()
     }
 
     @objc private func togglePopover(_ sender: Any?) {
@@ -163,6 +252,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         activatedForPopover = true
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         installDismissMonitors()
+        startVisibleTimer()
     }
 
     private func closePopover(_ sender: Any?, deactivating: Bool = true) {
@@ -228,6 +318,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.title = "AUB"
         window.backgroundColor = .windowBackgroundColor
         window.isReleasedWhenClosed = false
+        window.delegate = self
         window.setContentSize(NSSize(width: 328, height: 380))
         window.center()
         window.makeKeyAndOrderFront(nil)
