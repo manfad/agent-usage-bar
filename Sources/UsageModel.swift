@@ -9,10 +9,23 @@ enum SessionKind: Equatable, Sendable {
     case balance(remaining: Double, unit: String)
 }
 
+/// How a session's `resetsAt` reads once it becomes words. A five-hour window is always close
+/// enough that a countdown is the useful thing to show; everything else — weekly windows,
+/// model-scoped weekly limits, and whatever a plugin's own period turns out to be — counts down
+/// only inside its last day and otherwise names the day it turns over.
+enum ResetStyle: Equatable, Sendable {
+    case fiveHour
+    case weekly
+}
+
 struct UsageSession: Identifiable, Equatable, Sendable {
     var id: String
     var name: String
-    var resetText: String
+    /// When this window or period ends. Stored as an instant rather than pre-formatted text, so
+    /// the caption can be recomputed as time passes instead of freezing at whatever it read when
+    /// the session was last fetched. `nil` means there is nothing to show underneath.
+    var resetsAt: Date?
+    var resetStyle: ResetStyle = .weekly
     /// For `.window` this is the window's utilisation. For `.credits` it is `used / cap`, so the
     /// menu-bar label can still read a peak across every kind of session; without a cap it is 0.
     var usedPercent: Double
@@ -54,10 +67,19 @@ extension UsageSession {
     /// The muted line under the bar: the reset, and nothing else. The figure beside the bar already
     /// says how much is left, so naming the cap underneath only repeated arithmetic. Empty when
     /// there is no reset to name, and always empty for a balance, which is drawn as a bare line.
-    func captionText(locale: Locale = .current) -> String {
+    ///
+    /// Computed from `now` rather than read off a stored string, so a countdown kept on screen
+    /// keeps ticking instead of freezing at whatever it read when the session was last fetched.
+    func captionText(now: Date = Date(), timeZone: TimeZone = .current, locale: Locale = .current) -> String {
         switch kind {
         case .window, .credits:
-            return resetText
+            guard let resetsAt else { return "" }
+            switch resetStyle {
+            case .fiveHour:
+                return ResetText.countdown(until: resetsAt, now: now)
+            case .weekly:
+                return ResetText.weekly(until: resetsAt, now: now, timeZone: timeZone, locale: locale)
+            }
         case .balance:
             return ""
         }
@@ -165,6 +187,11 @@ private func groupedNumber(_ value: Double, fractionDigits: Int, locale: Locale)
 }
 
 enum SampleUsage {
+    /// Offsets from the moment the sample is built, not fixed dates, so the captions they render
+    /// keep looking like `Resets in 45m` / `Resets Sep 26` no matter when this is viewed instead
+    /// of drifting stale the way a baked string would.
+    private static let now = Date()
+
     static let agents: [UsageAgent] = [
         UsageAgent(
             id: "grok",
@@ -173,7 +200,7 @@ enum SampleUsage {
                 UsageSession(
                     id: "weekly",
                     name: "Weekly limit",
-                    resetText: "Resets Sep 26",
+                    resetsAt: now.addingTimeInterval(4 * 86400),
                     usedPercent: 16
                 )
             ],
@@ -186,13 +213,14 @@ enum SampleUsage {
                 UsageSession(
                     id: "5h",
                     name: "5h limit",
-                    resetText: "Resets in 2h 10m",
+                    resetsAt: now.addingTimeInterval(130 * 60),
+                    resetStyle: .fiveHour,
                     usedPercent: 42
                 ),
                 UsageSession(
                     id: "weekly",
                     name: "Weekly limit",
-                    resetText: "Resets Sep 24",
+                    resetsAt: now.addingTimeInterval(2 * 86400),
                     usedPercent: 13
                 )
             ],
@@ -205,19 +233,20 @@ enum SampleUsage {
                 UsageSession(
                     id: "5h",
                     name: "5h limit",
-                    resetText: "Resets in 45m",
+                    resetsAt: now.addingTimeInterval(45 * 60),
+                    resetStyle: .fiveHour,
                     usedPercent: 71
                 ),
                 UsageSession(
                     id: "weekly",
                     name: "Weekly limit",
-                    resetText: "Resets Sep 28",
+                    resetsAt: now.addingTimeInterval(6 * 86400),
                     usedPercent: 93
                 ),
                 UsageSession(
                     id: "fable",
                     name: "Fable",
-                    resetText: "Resets Sep 28",
+                    resetsAt: now.addingTimeInterval(6 * 86400),
                     usedPercent: 8
                 )
             ],
@@ -231,21 +260,22 @@ enum SampleUsage {
                 UsageSession(
                     id: "credits",
                     name: "API credits",
-                    resetText: "Resets Oct 1",
+                    resetsAt: now.addingTimeInterval(9 * 86400),
                     usedPercent: 24.8,
                     kind: .credits(used: 12.4, cap: 50, unit: "$")
                 ),
                 UsageSession(
                     id: "tokens",
                     name: "Spend today",
-                    resetText: "",
+                    resetsAt: nil,
                     usedPercent: 0,
                     kind: .credits(used: 3.28, cap: nil, unit: "$")
                 ),
                 UsageSession(
                     id: "5h",
                     name: "Rate limit",
-                    resetText: "Resets in 1h 5m",
+                    resetsAt: now.addingTimeInterval(65 * 60),
+                    resetStyle: .fiveHour,
                     usedPercent: 31
                 )
             ],

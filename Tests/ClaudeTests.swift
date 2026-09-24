@@ -44,20 +44,18 @@ final class ClaudeTests: XCTestCase {
           ]
         }
         """
-        let sessions = try parseClaudeUsageSessions(
-            Data(json.utf8),
-            now: date("2026-09-22T09:00:00-07:00"),
-            timeZone: losAngeles,
-            locale: enUS
-        )
+        let sessions = try parseClaudeUsageSessions(Data(json.utf8))
+        let now = date("2026-09-22T09:00:00-07:00")
         XCTAssertEqual(sessions.map(\.id), ["five_hour", "seven_day", "model_fable"])
         XCTAssertEqual(sessions.map(\.name), ["5h limit", "Weekly limit", "Fable"])
         XCTAssertEqual(sessions[0].usedPercent, 42.5)
-        XCTAssertEqual(sessions[0].resetText, "Resets in 2h 30m")
+        XCTAssertEqual(sessions[0].resetStyle, .fiveHour)
+        XCTAssertEqual(sessions[0].captionText(now: now), "Resets in 2h 30m")
         XCTAssertEqual(sessions[1].usedPercent, 13)
-        XCTAssertEqual(sessions[1].resetText, "Resets Sep 26")
+        XCTAssertEqual(sessions[1].resetStyle, .weekly)
+        XCTAssertEqual(sessions[1].captionText(now: now, timeZone: losAngeles, locale: enUS), "Resets Sep 26")
         XCTAssertEqual(sessions[2].usedPercent, 61.2)
-        XCTAssertEqual(sessions[2].resetText, "Resets Sep 26")
+        XCTAssertEqual(sessions[2].captionText(now: now, timeZone: losAngeles, locale: enUS), "Resets Sep 26")
     }
 
     func testParsesLegacySevenDayOpusWindowAlone() throws {
@@ -69,17 +67,15 @@ final class ClaudeTests: XCTestCase {
           }
         }
         """
-        let sessions = try parseClaudeUsageSessions(
-            Data(json.utf8),
-            now: date("2026-09-22T09:00:00-07:00"),
-            timeZone: losAngeles,
-            locale: enUS
-        )
+        let sessions = try parseClaudeUsageSessions(Data(json.utf8))
         XCTAssertEqual(sessions.count, 1)
         XCTAssertEqual(sessions[0].id, "model_opus")
         XCTAssertEqual(sessions[0].name, "Opus")
         XCTAssertEqual(sessions[0].usedPercent, 7)
-        XCTAssertEqual(sessions[0].resetText, "Resets Sep 26")
+        XCTAssertEqual(
+            sessions[0].captionText(now: date("2026-09-22T09:00:00-07:00"), timeZone: losAngeles, locale: enUS),
+            "Resets Sep 26"
+        )
     }
 
     func testModelScopedLimitWinsOverLegacyWindowForSameModel() throws {
@@ -101,15 +97,13 @@ final class ClaudeTests: XCTestCase {
           ]
         }
         """
-        let sessions = try parseClaudeUsageSessions(
-            Data(json.utf8),
-            now: date("2026-09-22T09:00:00-07:00"),
-            timeZone: losAngeles,
-            locale: enUS
-        )
+        let sessions = try parseClaudeUsageSessions(Data(json.utf8))
         XCTAssertEqual(sessions.map(\.id), ["model_opus"])
         XCTAssertEqual(sessions[0].usedPercent, 88)
-        XCTAssertEqual(sessions[0].resetText, "Resets Sep 27")
+        XCTAssertEqual(
+            sessions[0].captionText(now: date("2026-09-22T09:00:00-07:00"), timeZone: losAngeles, locale: enUS),
+            "Resets Sep 27"
+        )
     }
 
     func testThrowsOnBadPayload() {
@@ -121,34 +115,27 @@ final class ClaudeTests: XCTestCase {
         }
     }
 
-    func testFiveHourWindowReadsAsACountdown() {
-        XCTAssertEqual(
-            ResetText.fiveHour(isoEnd: "2026-09-22T11:30:00.123456-07:00", now: date("2026-09-22T09:00:00-07:00")),
-            "Resets in 2h 30m"
+    func testFiveHourStyleAlwaysCountsDownEvenFarInTheFuture() {
+        // Unlike a `.weekly` session, `.fiveHour` never switches over to naming the day, no
+        // matter how far off the reset is — a 5-hour window is never worth reading as a date.
+        let session = UsageSession(
+            id: "five_hour",
+            name: "5h limit",
+            resetsAt: date("2026-09-25T09:00:00-07:00"),
+            resetStyle: .fiveHour,
+            usedPercent: 50
         )
-        XCTAssertEqual(
-            ResetText.fiveHour(isoEnd: "2026-09-22T09:45:00-07:00", now: date("2026-09-22T09:00:00-07:00")),
-            "Resets in 45m"
-        )
-        XCTAssertEqual(
-            ResetText.fiveHour(isoEnd: "2026-09-22T08:55:00-07:00", now: date("2026-09-22T09:00:00-07:00")),
-            "Resets soon"
-        )
-        XCTAssertNil(ResetText.fiveHour(isoEnd: "", now: date("2026-09-22T09:00:00-07:00")))
+        XCTAssertEqual(session.captionText(now: date("2026-09-22T09:00:00-07:00")), "Resets in 72h")
     }
 
     func testWindowWithoutTimestampHasEmptyResetText() throws {
         let json = """
         { "five_hour": { "utilization": 5 } }
         """
-        let sessions = try parseClaudeUsageSessions(
-            Data(json.utf8),
-            now: date("2026-09-22T09:00:00-07:00"),
-            timeZone: losAngeles,
-            locale: enUS
-        )
+        let sessions = try parseClaudeUsageSessions(Data(json.utf8))
         XCTAssertEqual(sessions.count, 1)
-        XCTAssertEqual(sessions[0].resetText, "")
+        XCTAssertNil(sessions[0].resetsAt)
+        XCTAssertEqual(sessions[0].captionText(), "")
         XCTAssertEqual(sessions[0].usedPercent, 5)
     }
 
@@ -161,13 +148,11 @@ final class ClaudeTests: XCTestCase {
           }
         }
         """
-        let sessions = try parseClaudeUsageSessions(
-            Data(json.utf8),
-            now: date("2026-09-22T09:00:00-07:00"),
-            timeZone: losAngeles,
-            locale: enUS
+        let sessions = try parseClaudeUsageSessions(Data(json.utf8))
+        XCTAssertEqual(
+            sessions[0].captionText(now: date("2026-09-22T09:00:00-07:00"), timeZone: losAngeles, locale: enUS),
+            "Resets in 5h 10m"
         )
-        XCTAssertEqual(sessions[0].resetText, "Resets in 5h 10m")
     }
 
     func testCredentialParsingReadsOAuthBlob() throws {
@@ -194,15 +179,15 @@ final class ClaudeTests: XCTestCase {
         let grok = UsageAgent(
             id: "grok",
             name: "Grok",
-            sessions: [UsageSession(id: "weekly", name: "Weekly limit", resetText: "", usedPercent: 13)],
+            sessions: [UsageSession(id: "weekly", name: "Weekly limit", resetsAt: nil, usedPercent: 13)],
             unavailableReason: nil
         )
         let claude = UsageAgent(
             id: "claude",
             name: "Claude",
             sessions: [
-                UsageSession(id: "five_hour", name: "5h limit", resetText: "", usedPercent: 42.5),
-                UsageSession(id: "seven_day", name: "Weekly limit", resetText: "", usedPercent: 71.4),
+                UsageSession(id: "five_hour", name: "5h limit", resetsAt: nil, usedPercent: 42.5),
+                UsageSession(id: "seven_day", name: "Weekly limit", resetsAt: nil, usedPercent: 71.4),
             ],
             unavailableReason: nil
         )

@@ -145,12 +145,11 @@ func substitutePluginToken(in template: String, token: String) -> String {
 /// Numbers are read leniently (a shell script that prints `"26"` is still telling us 26), unknown
 /// session kinds fall back to a window, and a session missing its measurement is dropped rather
 /// than shown as zero.
-func parsePluginSessions(
-    _ data: Data,
-    now: Date = Date(),
-    timeZone: TimeZone = .current,
-    locale: Locale = .current
-) throws -> (sessions: [UsageSession], error: String?) {
+///
+/// Only the raw reset instant is pulled out of `resetsAt` here; a provider does not say what sort
+/// of window it is describing, so every plugin session reads with `.weekly` style at render time
+/// (a countdown inside its last day, the day name otherwise).
+func parsePluginSessions(_ data: Data) throws -> (sessions: [UsageSession], error: String?) {
     guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
         throw PluginError.badPayload
     }
@@ -169,9 +168,7 @@ func parsePluginSessions(
             continue
         }
         let name = (raw["name"] as? String)?.pluginTrimmed
-        let resetText = (raw["resetsAt"] as? String).flatMap {
-            ResetText.auto(isoEnd: $0, now: now, timeZone: timeZone, locale: locale)
-        } ?? ""
+        let resetsAt = (raw["resetsAt"] as? String).flatMap(ResetText.parseISO8601)
         let kind = (raw["kind"] as? String)?.pluginTrimmed.lowercased() ?? "window"
         if kind == "credits" {
             var cap = jsonDouble(raw["cap"])
@@ -199,7 +196,7 @@ func parsePluginSessions(
             append(UsageSession(
                 id: id,
                 name: name?.isEmpty == false ? name! : id,
-                resetText: resetText,
+                resetsAt: resetsAt,
                 usedPercent: cap.map { min(max(used / $0 * 100, 0), 100) } ?? 0,
                 kind: resolvedKind
             ))
@@ -208,7 +205,7 @@ func parsePluginSessions(
             append(UsageSession(
                 id: id,
                 name: name?.isEmpty == false ? name! : id,
-                resetText: resetText,
+                resetsAt: resetsAt,
                 usedPercent: percent
             ))
         }

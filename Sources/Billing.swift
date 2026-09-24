@@ -40,36 +40,14 @@ enum ResetText {
         return "Resets in \(hours)h \(trailing)m"
     }
 
-    /// Five-hour windows are always close enough to read as a countdown.
-    static func fiveHour(isoEnd: String, now: Date) -> String? {
-        guard let end = parseISO8601(isoEnd) else { return nil }
-        return countdown(until: end, now: now)
-    }
-
     /// Weekly and model-scoped weekly windows read as `Resets Sep 23`, except in their last day,
-    /// where a countdown is the more useful thing to show.
-    static func weekly(
-        isoEnd: String,
-        now: Date,
-        timeZone: TimeZone,
-        locale: Locale = .current
-    ) -> String? {
-        guard let end = parseISO8601(isoEnd) else { return nil }
+    /// where a countdown is the more useful thing to show. This is also what a plugin's own
+    /// period uses, since a provider does not say what sort of window it is describing.
+    static func weekly(until end: Date, now: Date, timeZone: TimeZone, locale: Locale = .current) -> String {
         if end.timeIntervalSince(now) <= day {
             return countdown(until: end, now: now)
         }
         return "Resets \(shortDate(end, timeZone: timeZone, locale: locale))"
-    }
-
-    /// For providers that do not say what sort of window they are describing: anything inside a
-    /// day reads as a countdown, anything further out names the day.
-    static func auto(
-        isoEnd: String,
-        now: Date,
-        timeZone: TimeZone = .current,
-        locale: Locale = .current
-    ) -> String? {
-        weekly(isoEnd: isoEnd, now: now, timeZone: timeZone, locale: locale)
     }
 
     static func shortDate(_ date: Date, timeZone: TimeZone, locale: Locale = .current) -> String {
@@ -81,12 +59,7 @@ enum ResetText {
     }
 }
 
-func parseBillingSession(
-    _ data: Data,
-    now: Date = Date(),
-    timeZone: TimeZone = .current,
-    locale: Locale = .current
-) throws -> UsageSession {
+func parseBillingSession(_ data: Data) throws -> UsageSession {
     guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let config = root["config"] as? [String: Any] else {
         throw GrokLoadError.badPayload
@@ -99,13 +72,13 @@ func parseBillingSession(
     let percent = min(max(100 - remaining, 0), 100)
     guard let period = config["currentPeriod"] as? [String: Any],
           let end = period["end"] as? String,
-          let resetText = ResetText.weekly(isoEnd: end, now: now, timeZone: timeZone, locale: locale) else {
+          let resetsAt = ResetText.parseISO8601(end) else {
         throw GrokLoadError.badPayload
     }
     return UsageSession(
         id: "weekly",
         name: "Weekly limit",
-        resetText: resetText,
+        resetsAt: resetsAt,
         usedPercent: percent
     )
 }
