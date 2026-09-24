@@ -16,6 +16,8 @@ enum LaunchMode {
 
 final class UsageStore: ObservableObject {
     @Published private(set) var agents: [UsageAgent] = []
+    /// True while any refresh is running, queued follow-ups included, so the footer can spin.
+    @Published private(set) var isRefreshing = false
     var onAgentsChange: (([UsageAgent]) -> Void)?
     private var lastSnapshotAt: Date?
     private var inFlight: Task<Void, Never>?
@@ -46,6 +48,7 @@ final class UsageStore: ObservableObject {
             refreshPending = true
             return
         }
+        isRefreshing = true
         inFlight = Task { [weak self] in
             guard let self else { return }
             // Re-read the registry every refresh: a provider folder added since the last one is
@@ -106,6 +109,8 @@ final class UsageStore: ObservableObject {
         if refreshPending {
             refreshPending = false
             refresh()
+        } else {
+            isRefreshing = false
         }
     }
 }
@@ -116,7 +121,13 @@ struct RootView: View {
     var onClose: () -> Void = {}
 
     var body: some View {
-        MenuBox(agents: store.agents, onOpenSettings: onOpenSettings, onClose: onClose)
+        MenuBox(
+            agents: store.agents,
+            isRefreshing: store.isRefreshing,
+            onRefresh: { store.refresh() },
+            onOpenSettings: onOpenSettings,
+            onClose: onClose
+        )
             .onAppear { store.refreshIfStale() }
     }
 }

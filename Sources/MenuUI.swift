@@ -3,6 +3,8 @@ import SwiftUI
 
 struct MenuBox: View {
     var agents: [UsageAgent]
+    var isRefreshing = false
+    var onRefresh: () -> Void = {}
     var onOpenSettings: () -> Void = {}
     var onClose: () -> Void = {}
 
@@ -27,7 +29,7 @@ struct MenuBox: View {
             Divider()
                 .padding(.vertical, 10)
 
-            MenuFooter(onOpenSettings: onOpenSettings)
+            MenuFooter(isRefreshing: isRefreshing, onRefresh: onRefresh, onOpenSettings: onOpenSettings)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
@@ -35,12 +37,21 @@ struct MenuBox: View {
     }
 }
 
-/// Settings and Quit, kept quiet so they never compete with the usage bars.
+/// Refresh, Settings and Quit, kept quiet so they never compete with the usage bars.
 struct MenuFooter: View {
+    var isRefreshing = false
+    var onRefresh: () -> Void = {}
     var onOpenSettings: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
+            // Fetches every agent now, whatever the staleness rules say. Pressed mid-refresh it
+            // queues one more pass rather than being dropped.
+            FooterButton(action: onRefresh) {
+                RefreshGlyph(isSpinning: isRefreshing)
+            }
+            .accessibilityLabel(isRefreshing ? "Refreshing" : "Refresh")
+
             FooterButton(action: onOpenSettings) {
                 Image(systemName: "gearshape")
             }
@@ -53,6 +64,20 @@ struct MenuFooter: View {
             }
         }
         .font(.system(size: 13, design: .rounded))
+    }
+}
+
+/// `arrow.clockwise`, turning steadily while a refresh runs. Driven by the clock rather than a
+/// repeating animation, so it stops cleanly on the frame the refresh finishes.
+private struct RefreshGlyph: View {
+    var isSpinning: Bool
+
+    var body: some View {
+        TimelineView(.animation(paused: !isSpinning)) { context in
+            let turns = context.date.timeIntervalSinceReferenceDate
+            Image(systemName: "arrow.clockwise")
+                .rotationEffect(.degrees(isSpinning ? turns.truncatingRemainder(dividingBy: 1) * 360 : 0))
+        }
     }
 }
 
